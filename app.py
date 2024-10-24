@@ -181,7 +181,7 @@ def main():
     # Ensure session state is initialized before any access to 'model_name'
     if "model_name" not in st.session_state:
         st.session_state.model_name = MODEL_NAME  # Default model name
-    
+
     # Sidebar for model selection
     with st.sidebar:
         st.header("🤖 Model Configuration")
@@ -200,7 +200,7 @@ def main():
 
     # Initialize DocumentChat after ensuring session state
     doc_chat = DocumentChat()
-    
+
     # Sidebar for file upload (keep the existing file upload code)
     with st.sidebar:
         if use_rag:
@@ -212,34 +212,35 @@ def main():
             )
         else:
             uploaded_file = None
-        
+
         file_key = None
         if uploaded_file:
             file_key = doc_chat.handle_file_upload(uploaded_file)
-    
+
     # Dynamic title with model name
     st.header(f"💬 Chat with your PDF using {st.session_state.model_name}")
-    
+
     # Clear chat button
     if st.button("Clear Chat History 🗑️"):
         st.session_state.messages = []
         st.rerun()
-    
+
     # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-    
+
     # Chat input
     if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-        
+
         with st.chat_message("assistant"):
             response = doc_chat.handle_chat(prompt, file_key, use_rag)
             if response:
                 st.session_state.messages.append({"role": "assistant", "content": response})
+                st.markdown(response)  # 确保在两种情况下都能显示响应
 
 if __name__ == "__main__":
     main()
