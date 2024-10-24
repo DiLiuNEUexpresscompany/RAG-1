@@ -1,4 +1,3 @@
-
 import os
 import base64
 import gc
@@ -142,26 +141,32 @@ class DocumentChat:
             st.error(f"An error occurred during file upload: {str(e)}")
             return None
     
-    def handle_chat(self, prompt, file_key):
+    def handle_chat(self, prompt, file_key, use_rag):
         """Handle chat interaction and response generation"""
         try:
-            if not file_key or file_key not in st.session_state.file_cache:
-                st.error("Please upload a document first.")
-                return None
-                
-            query_engine = st.session_state.file_cache[file_key]
-            streaming_response = query_engine.query(prompt)
-            
-            full_response = ""
-            message_placeholder = st.empty()
-            
-            for chunk in streaming_response.response_gen:
-                full_response += chunk
-                message_placeholder.markdown(full_response + "▌")
-            
-            message_placeholder.markdown(full_response)
-            return full_response
-            
+            if use_rag:
+                if not file_key or file_key not in st.session_state.file_cache:
+                    st.error("Please upload a document first.")
+                    return None
+
+                query_engine = st.session_state.file_cache[file_key]
+                streaming_response = query_engine.query(prompt)
+
+                full_response = ""
+                message_placeholder = st.empty()
+
+                for chunk in streaming_response.response_gen:
+                    full_response += chunk
+                    message_placeholder.markdown(full_response + "▌")
+
+                message_placeholder.markdown(full_response)
+                return full_response
+            else:
+                # Regular LLM chat (without RAG)
+                # Assuming `complete` is the correct method to generate a response
+                llm_response = self.llm.complete(prompt)  # Replace with the correct method
+                return llm_response
+
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
             return None
@@ -189,18 +194,24 @@ def main():
         if selected_model != st.session_state.model_name:
             st.session_state.model_name = selected_model
             st.rerun()  # Rerun the app if the model changes
-    
+
+        # Option to enable or disable RAG
+        use_rag = st.checkbox("Enable RAG", value=False, help="Enable or disable Retrieval-Augmented Generation")
+
     # Initialize DocumentChat after ensuring session state
     doc_chat = DocumentChat()
     
     # Sidebar for file upload (keep the existing file upload code)
     with st.sidebar:
-        st.header("📄 Document Upload")
-        uploaded_file = st.file_uploader(
-            "Upload your PDF file",
-            type="pdf",
-            help="Upload a PDF file to start chatting"
-        )
+        if use_rag:
+            st.header("📄 Document Upload (Required for RAG)")
+            uploaded_file = st.file_uploader(
+                "Upload your PDF file",
+                type="pdf",
+                help="Upload a PDF file to start chatting using RAG"
+            )
+        else:
+            uploaded_file = None
         
         file_key = None
         if uploaded_file:
@@ -220,19 +231,15 @@ def main():
             st.markdown(message["content"])
     
     # Chat input
-    if prompt := st.chat_input("Ask a question about your document..."):
+    if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
         with st.chat_message("assistant"):
-            if not file_key:
-                st.warning("Please upload a PDF document first.")
-            else:
-                response = doc_chat.handle_chat(prompt, file_key)
-                if response:
-                    st.session_state.messages.append({"role": "assistant", "content": response})
+            response = doc_chat.handle_chat(prompt, file_key, use_rag)
+            if response:
+                st.session_state.messages.append({"role": "assistant", "content": response})
 
 if __name__ == "__main__":
     main()
-
