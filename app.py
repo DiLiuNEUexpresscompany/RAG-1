@@ -16,24 +16,23 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 MODEL_NAME = "llama3.1"  
 
 
-@st.cache_resource
-def get_llm():
-    """Initialize and cache LLM"""
-    return Ollama(model=MODEL_NAME, request_timeout=120.0)
+def get_llm(model_name):
+    """Initialize LLM with specified model"""
+    return Ollama(model=model_name, request_timeout=120.0)
 
-@st.cache_resource
-def get_embeddings():
-    """Initialize and cache embedding model"""
+def get_embeddings(model_name):
+    """Initialize embedding model with specified model"""
     return OllamaEmbedding(
-        model_name=MODEL_NAME,
+        model_name=model_name,
         request_timeout=120.0
     )
 
 class DocumentChat:
-    def __init__(self):
+    def __init__(self, model_name):
         self.initialize_session_state()
-        self.llm = get_llm()
-        self.embed_model = get_embeddings()
+        self.model_name = model_name
+        self.llm = get_llm(model_name)
+        self.embed_model = get_embeddings(model_name)
         # Configure global settings
         Settings.llm = self.llm
         Settings.embed_model = self.embed_model
@@ -45,8 +44,6 @@ class DocumentChat:
             st.session_state.file_cache = {}
         if "messages" not in st.session_state:
             st.session_state.messages = []
-        if "model_name" not in st.session_state:
-            st.session_state.model_name = MODEL_NAME
     
     def get_qa_prompt(self):
         """Return the custom QA prompt template"""
@@ -185,32 +182,44 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    # Ensure session state is initialized before any access to 'model_name'
-    if "model_name" not in st.session_state:
-        st.session_state.model_name = MODEL_NAME  # Default model name
-
     # Sidebar for model selection
     with st.sidebar:
         st.header("🤖 Model Configuration")
         selected_model = st.selectbox(
             "Choose Model",
-            ["llama3.1", "gemma2"],  # Add models you want to support
+            ["llama3.1", "gemma2:9b"],
             index=0,
             key="model_selector"
         )
-        if selected_model != st.session_state.model_name:
-            st.session_state.model_name = selected_model
-            st.rerun()  # Rerun the app if the model changes
+        
+        # RAG configuration
+        use_rag = st.checkbox(
+            "Enable RAG",
+            value=st.session_state.get('use_rag', False),
+            help="Enable or disable Retrieval-Augmented Generation",
+            key="rag_checkbox"
+        )
+        
+        # Update RAG state
+        st.session_state.use_rag = use_rag
+        
+        # Handle model change
+        if "current_model" not in st.session_state or st.session_state.current_model != selected_model:
+            st.session_state.current_model = selected_model
+            # Clear file cache when model changes
+            if "file_cache" in st.session_state:
+                st.session_state.file_cache = {}
+            # Optionally clear chat history when model changes
+            if "messages" in st.session_state:
+                st.session_state.messages = []
+            st.rerun()
 
-        # Option to enable or disable RAG
-        use_rag = st.checkbox("Enable RAG", value=False, help="Enable or disable Retrieval-Augmented Generation")
+    # Initialize DocumentChat with current model
+    doc_chat = DocumentChat(selected_model)
 
-    # Initialize DocumentChat after ensuring session state
-    doc_chat = DocumentChat()
-
-    # Sidebar for file upload (keep the existing file upload code)
+    # 文件上传部分
     with st.sidebar:
-        if use_rag:
+        if st.session_state.use_rag:
             st.header("📄 Document Upload (Required for RAG)")
             uploaded_file = st.file_uploader(
                 "Upload your PDF file",
@@ -224,8 +233,11 @@ def main():
         if uploaded_file:
             file_key = doc_chat.handle_file_upload(uploaded_file)
 
-    # Dynamic title with model name
-    st.header(f"💬 Chat with your PDF using {st.session_state.model_name}")
+    # Dynamic title with model name and RAG status
+    title = f"💬 Chat with your PDF using {selected_model}"
+    if st.session_state.use_rag:
+        title += " (RAG Enabled)"
+    st.header(title)
 
     # Clear chat button
     if st.button("Clear Chat History 🗑️"):
@@ -239,14 +251,14 @@ def main():
 
     # Chat input
     if prompt := st.chat_input("Ask a question..."):
-        # 添加用户消息到历史记录
+        # Add user message to history
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # 处理助手响应
+        # Handle assistant response
         with st.chat_message("assistant"):
-            response = doc_chat.handle_chat(prompt, file_key, use_rag)
+            response = doc_chat.handle_chat(prompt, file_key, st.session_state.use_rag)
             if response:
                 st.session_state.messages.append({"role": "assistant", "content": response})
 
