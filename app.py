@@ -145,6 +145,7 @@ class DocumentChat:
         """Handle chat interaction and response generation"""
         try:
             if use_rag:
+                # 需要上传文件的 RAG 模式
                 if not file_key or file_key not in st.session_state.file_cache:
                     st.error("Please upload a document first.")
                     return None
@@ -162,10 +163,16 @@ class DocumentChat:
                 message_placeholder.markdown(full_response)
                 return full_response
             else:
-                # Regular LLM chat (without RAG)
-                # Assuming `complete` is the correct method to generate a response
-                llm_response = self.llm.complete(prompt)  # Replace with the correct method
-                return llm_response
+                # 普通对话模式，不需要文件
+                message_placeholder = st.empty()
+                response = self.llm.complete(prompt)
+                
+                # 如果 LLM 返回的是完整响应对象，需要获取文本内容
+                response_text = response.text if hasattr(response, 'text') else str(response)
+                
+                # 显示响应
+                message_placeholder.markdown(response_text)
+                return response_text
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
@@ -232,15 +239,16 @@ def main():
 
     # Chat input
     if prompt := st.chat_input("Ask a question..."):
+        # 添加用户消息到历史记录
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # 处理助手响应
         with st.chat_message("assistant"):
             response = doc_chat.handle_chat(prompt, file_key, use_rag)
             if response:
                 st.session_state.messages.append({"role": "assistant", "content": response})
-                st.markdown(response)  # 确保在两种情况下都能显示响应
 
 if __name__ == "__main__":
     main()
